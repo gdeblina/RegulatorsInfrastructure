@@ -1,0 +1,7 @@
+/.tox
+/.vscode
+*.egg-info
+*.pyc
+__pycache__
+/cdk.out
+/.env
