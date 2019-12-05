@@ -41,20 +41,22 @@ class PipelineStack(core.Stack):
                 version="0.2",
                 phases=dict(
                     install=dict(commands=[
-                        "npm install",
-                        "npm init"
+                        "python3 -m venv .env",
+                        ". .env/bin/activate",
+                        "pip install -r requirements.txt",
+                        "pip install --upgrade pip"
                     ]),
                     build=dict(commands=[
-                        "npm run build",
-                        "npm run cdk synth -- -o dist"
+                        "npm install -g aws-cdk",
+                        "cdk synth"
                     ])
                 ),
                 artifacts={
-                    "base-directory": "dist",
+                    "base-directory": "cdk.out",
                     "files": [
-                        "ECSStack.template.json"]},
+                        "regulators-service-ecs-deployment.template.json"]},
                 environment=dict(buildImage=
-                    aws_codebuild.LinuxBuildImage.UBUNTU_14_04_NODEJS_10_14_1))
+                    aws_codebuild.LinuxBuildImage.UBUNTU_14_04_PYTHON_3_7_1))
             )
         )
 
@@ -96,10 +98,11 @@ class PipelineStack(core.Stack):
             value=bucket.bucket_name
         )
 
-        # define the source artifact
+        # define the source artifacts
         source_output = aws_codepipeline.Artifact(artifact_name='source')
+        cdk_source_output = aws_codepipeline.Artifact(artifact_name='cdk')
 
-        # define the build artifact
+        # define the build artifact for infra
         cdk_build_output = aws_codepipeline.Artifact(artifact_name='CdkBuild')
 
         # define the pipeline
@@ -112,7 +115,15 @@ class PipelineStack(core.Stack):
                     stage_name='Source',
                     actions=[
                         aws_codepipeline_actions.GitHubSourceAction(
-                            action_name='GitHubSource',
+                            action_name='CDK_GitHubSource',
+                            oauth_token=core.SecretValue.secrets_manager('GitHubPersonalAccessTokenForRegulators'),
+                            owner='deblinag',
+                            repo='RegulatorsInfrastructure',
+                            output=cdk_source_output,
+                            trigger=aws_codepipeline_actions.GitHubTrigger.POLL
+                        ),
+                        aws_codepipeline_actions.GitHubSourceAction(
+                            action_name='Service_GitHubSource',
                             oauth_token=core.SecretValue.secrets_manager('GitHubPersonalAccessTokenForRegulators'),
                             owner='mmerkes',
                             repo='Regulators',
@@ -126,7 +137,7 @@ class PipelineStack(core.Stack):
                     actions=[
                         aws_codepipeline_actions.CodeBuildAction(
                             action_name='CDK_Build',
-                            input=source_output,
+                            input=cdk_source_output,
                             project=cdk_build,
                             outputs=[cdk_build_output]
                         ),
@@ -143,7 +154,7 @@ class PipelineStack(core.Stack):
                         aws_codepipeline_actions.CloudFormationCreateUpdateStackAction(
                             action_name='ECS_CFN_Deploy',
                             template_path=cdk_build_output.at_path(
-                                "ECSStack.template.json"),
+                                "regulators-service-ecs-deployment.template.json"),
                             stack_name="RegulatorsECSServiceDeploymentStack",
                             admin_permissions=True
                         )

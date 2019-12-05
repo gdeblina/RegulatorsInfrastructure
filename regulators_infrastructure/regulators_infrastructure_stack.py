@@ -15,7 +15,7 @@ class ECSStack(core.Stack):
             cpu=512,                    # Default is 256
             desired_count=6,            # Default is 1
             task_image_options=ecs_patterns.ApplicationLoadBalancedTaskImageOptions(
-                image=ecs.ContainerImage.from_ecr_repository(props['ecr'])),
+                image=ecs.ContainerImage.from_ecr_repository(props['ecr'], f"{props['namespace']}")),
             memory_limit_mib=2048,      # Default is 512
             public_load_balancer=True  # Default is False
         )    
